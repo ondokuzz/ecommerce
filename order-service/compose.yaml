@@ -1,0 +1,89 @@
+networks:
+  ecomm-nw:
+    driver: bridge
+    name: ecomm-nw
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    networks:
+      - ecomm-nw
+    ports:
+      - '9091:9091'
+      - '9092:9092'
+      - '9093:9093'
+    environment:
+      # docker run --rm confluentinc/cp-kafka:latest kafka-storage random-uuid
+      CLUSTER_ID: vKCEy5phQXOh-wGGmhYH2g
+      KAFKA_BROKER_ID: 1
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: CONTROLLER://kafka:9091,EXTERNAL://kafka:9092,INTERNAL://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://192.168.8.107:9092,INTERNAL://kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9091
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: true
+      KAFKA_HEAP_OPTS: '-Xmx512M -Xms512M'
+      KAFKA_JMX_PORT: 9102 
+      KAFKA_JMX_HOSTNAME: kafka
+    volumes:
+      - ./kafka-data:/var/lib/kafka/data
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: passwd
+      MONGO_INITDB_DATABASE: ecomm
+    networks:
+      - ecomm-nw
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo-data:/data/db
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongoexpress
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: passwd
+      ME_CONFIG_MONGODB_URL: mongodb://root:passwd@mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    networks:
+      - ecomm-nw
+    ports:
+      - 28017:8081
+
+  mysql:
+    image: 'mysql:8.1'
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: mydb
+      MYSQL_ROOT_PASSWORD: passwd
+      MYSQL_USER: user
+      MYSQL_PASSWORD: passwd
+    networks:
+      - ecomm-nw
+    ports:
+      - 3306:3306
+    volumes:
+      - ./mysql-data:/data/mysqldb
+
+  # kafkacat:
+  #   image: confluentinc/cp-kafkacat
+  #   command: sleep infinity
+
+
