@@ -150,15 +150,9 @@
 
 	</dependencies>
 
-		<distributionManagement>
-    <repository>
-      <uniqueVersion>false</uniqueVersion>
-      <id>dockerhub</id>
-      <name>Docker Hub Repo</name>
-      <url>https://hub.docker.com/repository/docker/ondokuzdocker</url>
-      <layout>default</layout>
-    </repository>
-</distributionManagement>
+	<distributionManagement>
+
+	</distributionManagement>
 
 	<build>
 		<plugins>
@@ -167,7 +161,7 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
 					<image>
-						<name>ondokuzdocker/ecommerce-${project.artifactId}:${project.version}</name>
+						<name>ecommerce/${project.artifactId}:${project.version}</name>
 					</image>
 					<excludes>
 						<exclude>

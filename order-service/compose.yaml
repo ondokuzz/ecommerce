@@ -38,7 +38,7 @@ services:
       KAFKA_JMX_PORT: 9102 
       KAFKA_JMX_HOSTNAME: kafka
     volumes:
-      - ./kafka-data:/var/lib/kafka/data
+      - kafka-data:/var/lib/kafka/data
 
   mongodb:
     image: mongo:latest
@@ -52,7 +52,7 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ./mongo-data:/data/db
+      - mongo-data:/data/db
 
   mongo-express:
     image: mongo-express
@@ -80,10 +80,14 @@ services:
     ports:
       - 3306:3306
     volumes:
-      - ./mysql-data:/data/mysqldb
+      - mysql-data:/data/mysqldb
 
   # kafkacat:
   #   image: confluentinc/cp-kafkacat
   #   command: sleep infinity
 
+volumes:
+  kafka-data:
+  mongo-data:
+  mysql-data:
 

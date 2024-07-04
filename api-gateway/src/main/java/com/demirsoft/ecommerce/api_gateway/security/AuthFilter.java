@@ -85,8 +85,8 @@ public class AuthFilter implements GatewayFilter {
         if (passwordList == null || passwordList.isEmpty())
             return Optional.empty();
 
-        String username = usernameList.getLast();
-        String password = passwordList.getLast();
+        String username = usernameList.get(usernameList.size() - 1);
+        String password = passwordList.get(passwordList.size() - 1);
 
         if (username == null || username.isBlank())
             return Optional.empty();
