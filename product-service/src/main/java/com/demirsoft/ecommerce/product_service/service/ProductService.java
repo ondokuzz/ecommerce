@@ -1,33 +1,33 @@
 package com.demirsoft.ecommerce.product_service.service;
 
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
-import org.apache.kafka.common.protocol.types.Field.Bool;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.reactive.TransactionalOperator;
 
 import com.demirsoft.ecommerce.product_service.config.KafkaConsumerConfig;
-import com.demirsoft.ecommerce.product_service.entity.InventoryRequest;
 import com.demirsoft.ecommerce.product_service.entity.InventoryRequestStatus;
+import com.demirsoft.ecommerce.product_service.entity.InventoryUpdateLog;
 import com.demirsoft.ecommerce.product_service.entity.Product;
 import com.demirsoft.ecommerce.product_service.event.InventoryAllocated;
 import com.demirsoft.ecommerce.product_service.event.OrderCreated;
 import com.demirsoft.ecommerce.product_service.event.OrderFailed;
-import com.demirsoft.ecommerce.product_service.event.OrderItem;
+import com.demirsoft.ecommerce.product_service.event.OrderFailed.ServiceType;
+import com.demirsoft.ecommerce.product_service.exception.OrderAlreadyProcessedException;
 import com.demirsoft.ecommerce.product_service.exception.ProductNotFoundException;
 import com.demirsoft.ecommerce.product_service.repository.InventoryRequestRepository;
 import com.demirsoft.ecommerce.product_service.repository.ProductRepository;
+import com.demirsoft.ecommerce.product_service.service.helpers.ProductQuantityProcessor;
 
 import lombok.extern.log4j.Log4j2;
 import reactor.core.publisher.Flux;
@@ -41,6 +41,12 @@ public class ProductService {
     private ProductRepository productRepository;
 
     @Autowired
+    private ReactiveMongoTemplate reactiveMongoTemplate;
+
+    @Autowired
+    private TransactionalOperator transactionalOperator;
+
+    @Autowired
     private InventoryRequestRepository inventoryRequestRepository;
 
     @Autowired
@@ -48,7 +54,8 @@ public class ProductService {
     public ModelMapper modelMapperForOverwriteProductWithoutId;
 
     @Autowired
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private ReactiveKafkaProducerTemplate<String, Object> kafkaTemplate;
+    // private KafkaTemplate<String, Object> kafkaTemplate;
 
     private static final String ORDER_CREATED = "order_created";
     private static final String ORDER_FAILED = "order_failed";
@@ -88,39 +95,45 @@ public class ProductService {
 
     @KafkaListener(topics = ORDER_CREATED, groupId = KafkaConsumerConfig.CONSUMER_GROUP, autoStartup = "true", containerFactory = "kafkaListenerContainerFactory")
     public void consume(@Payload OrderCreated order, Acknowledgment ack) {
+
         log.info("order topic received: " + order.toString());
 
-        getPreviousRequestsFoSameOrder(order)
-                .collectList()
-                .flatMapMany(requestHistory -> {
-                    if (requestHistory.size() > 0) {
-                        // this order has already been processed before
-                        return Mono.empty();
-                    }
-
-                    return processRequest(order, ack, requestHistory);
-
-                }).subscribe(
-                        result -> log.debug("order topic processing successful: " + order.toString()),
-                        error -> log.debug("order topic processing failed: " + order.toString()),
+        checkForDuplicateOrderRequest(order)
+                .then(processRequest(order))
+                .subscribe(
+                        result -> log.debug(String.format("order topic processing successful: %s", order.toString())),
+                        error -> log.error(
+                                String.format("order topic processing failed %s: reason: %s", order.toString(), error)),
                         () -> ack.acknowledge());
     }
 
-    public Mono<Boolean> processRequest(OrderCreated order, Acknowledgment ack, List<InventoryRequest> requestHistory) {
+    public Mono<Boolean> checkForDuplicateOrderRequest(OrderCreated order) {
 
-        List<String> productIds = extractProductIdList(order);
+        return getInventoryUpdateLogsForThisOrder(order)
+                .count()
+                .flatMap((count) -> {
+                    if (count > 0) {
+                        return Mono.<Boolean>error(
+                                new OrderAlreadyProcessedException(String.format("order id: %s", order.getId())));
 
-        Map<String, Integer> productIdToRequestedQuantityMap = extractProductIdQuantityMap(order);
+                    }
 
-        return productRepository.findAllById(productIds).collectList()
+                    return Mono.just(false);
+                });
+
+    }
+
+    public Mono<Boolean> processRequest(OrderCreated order) {
+
+        var quantityProcessor = new ProductQuantityProcessor(order);
+
+        return productRepository.findAllById(quantityProcessor.getProductIds()).collectList()
                 .flatMapMany(products -> {
 
-                    var missingItems = checkAndDecrementProductQuantities(
-                            products, productIds,
-                            productIdToRequestedQuantityMap);
+                    quantityProcessor.checkAndDecrementProductQuantities(products);
 
-                    if (missingItems.size() > 0) {
-                        rejectOrder(order, missingItems);
+                    if (quantityProcessor.areThereMissingItems()) {
+                        rejectOrder(order, quantityProcessor.getMissingItems());
                         return Mono.empty();
                     }
 
@@ -130,101 +143,76 @@ public class ProductService {
 
     }
 
-    private LinkedList<String> checkAndDecrementProductQuantities(
-            List<Product> products,
-            List<String> productIds,
-            Map<String, Integer> productIdToRequestedQuantityMap) {
-
-        var missingItems = new LinkedList<String>();
-
-        products.forEach(product -> {
-            if (productIdToRequestedQuantityMap.containsKey(product.getId())) {
-                int requestedQuantity = productIdToRequestedQuantityMap.get(product.getId());
-                if (product.getQuantity() < requestedQuantity) {
-                    missingItems.add(String.format("item: %s is missing by amount %d", product.getId(),
-                            requestedQuantity - product.getQuantity()));
-                } else {
-                    product.setQuantity(product.getQuantity() - requestedQuantity);
-                }
-
-                productIds.remove(product.getId());
-            }
-        });
-
-        productIds.stream().forEach(productId -> {
-            int requestedQuantity = productIdToRequestedQuantityMap.get(productId);
-            missingItems.add(String.format("item: %s is missing by amount %d", productId, requestedQuantity));
-        });
-
-        return missingItems;
-    }
-
-    private List<String> extractProductIdList(OrderCreated order) {
-        return order.getItems().stream()
-                .map(OrderItem::getProductId)
-                .toList();
-
-    }
-
-    private Map<String, Integer> extractProductIdQuantityMap(OrderCreated order) {
-        return order.getItems().stream()
-                .collect(Collectors.toMap(OrderItem::getProductId, OrderItem::getQuantity));
-
-    }
-
-    private Flux<InventoryRequest> getPreviousRequestsFoSameOrder(OrderCreated order) {
-        return inventoryRequestRepository.findByOrderId(order.getId());
-    }
-
     @Transactional
     private void rejectOrder(OrderCreated order, List<String> reason) {
-        var orderFailed = new OrderFailed(order.getId(), order.getCustomerId(), reason);
 
-        // setting null id creates a new log for this order id
-        inventoryRequestRepository
-                .save(new InventoryRequest(null, order.getId(), InventoryRequestStatus.ITEMS_UNAVAILABLE));
+        var inventoryUpdateLog = buidInventoryUpdateLog(order);
+        inventoryRequestRepository.save(inventoryUpdateLog);
 
+        var orderFailed = buildOrderFailed(order, reason);
         kafkaTemplate.send(ORDER_FAILED, orderFailed.getId(), orderFailed);
+
+    }
+
+    private OrderFailed buildOrderFailed(OrderCreated order, List<String> reason) {
+        // setting null id creates a new log for this order id
+        return new OrderFailed(
+                order.getId(),
+                order.getCustomerId(),
+                ServiceType.INVENTORY_SERVICE.name(),
+                reason);
+    }
+
+    private InventoryUpdateLog buidInventoryUpdateLog(OrderCreated order) {
+        return new InventoryUpdateLog(null, order.getId(), InventoryRequestStatus.ITEMS_UNAVAILABLE);
     }
 
     @Transactional
     private Mono<Boolean> acceptOrder(OrderCreated order, List<Product> products) {
         // update product repo with new quantities
-        AtomicBoolean productRepoSaved = new AtomicBoolean(false);
-        AtomicBoolean inventoryRepoSaved = new AtomicBoolean(false);
+        AtomicBoolean dbOperationsSaved = new AtomicBoolean(false);
 
-        return updateProductRepo(products)
+        return updateProductRepoAndInventoryUpdateLogAtomically(products, order)
+                .as(transactionalOperator::transactional)
                 .flatMap(prev_step_ok -> {
-                    productRepoSaved.set(true);
-
-                    return updateInventoryHistory(order);
-                })
-                .flatMap(prev_step_ok -> {
-                    inventoryRepoSaved.set(true);
+                    dbOperationsSaved.set(true);
 
                     return sendInventoryAllocatedEvent(order);
                 })
                 .then(Mono.just(true))
                 .doOnError(one_of_steps_failed -> {
                     // rollback successful steps,
-                    if (productRepoSaved.get())
-                        rollbackProductRepo(order, products);
-                    if (inventoryRepoSaved.get())
-                        rollbackInventoryRepo(order);
-                    // kafka step is not processed or already failed
+                    if (dbOperationsSaved.get())
+                        rollbackProductRepoAndInventoryUpdateLogAtomically(products, order);
+
+                    // kafka step is already not processed or failed
                 })
                 .then(Mono.just(false));
     }
 
-    private Mono<Boolean> updateProductRepo(List<Product> products) {
-        return productRepository.saveAll(products).collectList().flatMap(step_ok -> Mono.just(true));
+    private Flux<InventoryUpdateLog> getInventoryUpdateLogsForThisOrder(OrderCreated order) {
+        return inventoryRequestRepository.findByOrderId(order.getId());
     }
 
-    private Mono<Boolean> updateInventoryHistory(OrderCreated order) {
-        // setting null id creates a new log for this order id
-        var inventoryRequest = new InventoryRequest(null, order.getId(), InventoryRequestStatus.ITEMS_ALLOCATED);
+    private Mono<Boolean> updateProductRepoAndInventoryUpdateLogAtomically(
+            List<Product> products,
+            OrderCreated order) {
+        var productsSaveRequest = productRepository.saveAll(products);
+        var saveInventoryUpdateLogRequest = inventoryRequestRepository.save(buildInventoryUpdateLog(order));
 
-        return inventoryRequestRepository.save(inventoryRequest).flatMap(step_ok -> Mono.just(true));
+        return productsSaveRequest
+                .then(saveInventoryUpdateLogRequest)
+                .as(transactionalOperator::transactional)
+                .then(Mono.just(true));
+    }
+
+    private void rollbackProductRepoAndInventoryUpdateLogAtomically(List<Product> products, OrderCreated order) {
+        throw new UnsupportedOperationException("Unimplemented method 'rollbackInventoryRepo'");
+    }
+
+    private InventoryUpdateLog buildInventoryUpdateLog(OrderCreated order) {
+        // setting null id creates a new log for each request
+        return new InventoryUpdateLog(null, order.getId(), InventoryRequestStatus.ITEMS_ALLOCATED);
     }
 
     private Mono<Boolean> sendInventoryAllocatedEvent(OrderCreated order) {
@@ -233,17 +221,9 @@ public class ProductService {
                 order.getId(), order.getCustomerId(), order.getCreditCardInfo(),
                 order.getPrice(), order.getShippingAddress());
 
-        var kafkaFuture = kafkaTemplate.send(INVENTORY_ALLOCATED, inventoryAllocated.getOrderId(), inventoryAllocated);
+        var kafkaRequest = kafkaTemplate.send(INVENTORY_ALLOCATED, inventoryAllocated.getOrderId(), inventoryAllocated);
 
-        return Mono.fromFuture(kafkaFuture).flatMap(step_ok -> Mono.just(true));
-    }
-
-    private void rollbackInventoryRepo(OrderCreated order) {
-        throw new UnsupportedOperationException("Unimplemented method 'rollbackInventoryRepo'");
-    }
-
-    private void rollbackProductRepo(OrderCreated order, List<Product> products) {
-        throw new UnsupportedOperationException("Unimplemented method 'rollbackProductRepo'");
+        return kafkaRequest.flatMap(step_ok -> Mono.just(true));
     }
 
 }

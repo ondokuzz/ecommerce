@@ -9,11 +9,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 
-import com.demirsoft.ecommerce.product_service.event.OrderFailed;
+import reactor.kafka.sender.SenderOptions;
 
 @Configuration
 public class KafkaProducerConfig {
@@ -22,18 +22,25 @@ public class KafkaProducerConfig {
     PropertiesConfig propertiesConfig;
 
     @Bean
-    public ProducerFactory<String, Object> producerFactory() {
-        Map<String, Object> config = new HashMap<>();
-
-        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, propertiesConfig.getKafkaAddress());
-        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+    public ProducerFactory<Object, Object> producerFactory() {
+        Map<String, Object> config = getKafkaProducerConfig();
 
         return new DefaultKafkaProducerFactory<>(config);
     }
 
     @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<String, Object>(producerFactory());
+    public ReactiveKafkaProducerTemplate<String, Object> getReactiveKafkaTemplate() {
+        var config = getKafkaProducerConfig();
+        SenderOptions<String, Object> senderOptions = SenderOptions.create(config);
+        return new ReactiveKafkaProducerTemplate<String, Object>(senderOptions);
+    }
+
+    private Map<String, Object> getKafkaProducerConfig() {
+        var config = new HashMap<String, Object>();
+
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, propertiesConfig.getKafkaAddress());
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return config;
     }
 }

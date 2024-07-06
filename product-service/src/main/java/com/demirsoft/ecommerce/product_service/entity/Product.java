@@ -7,7 +7,7 @@ import org.springframework.data.mongodb.core.mapping.Sharded;
 import lombok.Data;
 
 @Document(collection = "products")
-@Sharded(shardKey = { "id, brand" })
+@Sharded(shardKey = { "id", "brand" })
 @Data
 public class Product {
     @Id

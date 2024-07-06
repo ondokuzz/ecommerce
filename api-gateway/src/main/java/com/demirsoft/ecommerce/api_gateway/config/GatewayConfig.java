@@ -18,7 +18,7 @@ public class GatewayConfig {
         @Bean
         public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
                 return builder.routes()
-                                .route("first-microservice", r -> r.path("/order")
+                                .route("get order", r -> r.path("/order")
                                                 .and().method("GET")
                                                 .filters(f -> f.filters(authFilter))
                                                 .uri("http://localhost:8088"))

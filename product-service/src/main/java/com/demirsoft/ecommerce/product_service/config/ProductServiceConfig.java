@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.demirsoft.ecommerce.product_service.entity.Product;
+import com.demirsoft.ecommerce.product_service.event.OrderFailed.ServiceType;
 import com.demirsoft.ecommerce.product_service.event.ProductDto;
 
 @Configuration

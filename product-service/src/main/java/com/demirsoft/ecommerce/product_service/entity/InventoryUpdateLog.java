@@ -10,7 +10,7 @@ import lombok.Data;
 @Document(collection = "inventory_request")
 @Data
 @AllArgsConstructor
-public class InventoryRequest {
+public class InventoryUpdateLog {
     @Id
     private String id;
 

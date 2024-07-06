@@ -80,9 +80,9 @@ public class AuthFilter implements GatewayFilter {
     private Optional<String> getTokenFromAuthService(ServerHttpRequest request) {
         List<String> usernameList = request.getHeaders().getOrEmpty("username");
         List<String> passwordList = request.getHeaders().getOrEmpty("password");
-        if (usernameList == null || usernameList.isEmpty())
+        if (usernameList.isEmpty())
             return Optional.empty();
-        if (passwordList == null || passwordList.isEmpty())
+        if (passwordList.isEmpty())
             return Optional.empty();
 
         String username = usernameList.get(usernameList.size() - 1);
