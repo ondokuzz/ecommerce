@@ -22,7 +22,7 @@ public class KafkaProducerConfig {
     PropertiesConfig propertiesConfig;
 
     @Bean
-    public ProducerFactory<String, OrderFailed> producerFactory() {
+    public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> config = new HashMap<>();
 
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, propertiesConfig.getKafkaAddress());
@@ -33,7 +33,7 @@ public class KafkaProducerConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, OrderFailed> kafkaTemplate() {
-        return new KafkaTemplate<String, OrderFailed>(producerFactory());
+    public KafkaTemplate<String, Object> kafkaTemplate() {
+        return new KafkaTemplate<String, Object>(producerFactory());
     }
 }
