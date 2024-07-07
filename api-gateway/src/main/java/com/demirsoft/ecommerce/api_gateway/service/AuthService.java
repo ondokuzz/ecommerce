@@ -18,7 +18,7 @@ public class AuthService {
 
     public String getSecret() {
         ResponseEntity<String> response = restTemplate.exchange(
-                "http://localhost:8088/public-key",
+                "http://localhost:8081/public-key",
                 HttpMethod.GET,
                 null,
                 String.class);
@@ -32,7 +32,7 @@ public class AuthService {
         headers.set("password", password);
         HttpEntity<AuthenticationRequest> request = new HttpEntity<AuthenticationRequest>(
                 new AuthenticationRequest(username, password), headers);
-        ResponseEntity<String> response = restTemplate.exchange("http://localhost:8088/login", HttpMethod.POST, request,
+        ResponseEntity<String> response = restTemplate.exchange("http://localhost:8081/login", HttpMethod.POST, request,
                 String.class);
         System.out.println("token:" + response.getBody());
         return response.getBody();

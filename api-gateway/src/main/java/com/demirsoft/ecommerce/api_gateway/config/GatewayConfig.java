@@ -12,32 +12,37 @@ import com.demirsoft.ecommerce.api_gateway.security.AuthFilter;
 @Configuration
 public class GatewayConfig {
 
-        @Autowired
-        AuthFilter authFilter;
+        // @Autowired
+        // AuthFilter authFilter;
 
-        @Bean
-        public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
-                return builder.routes()
-                                .route("get order", r -> r.path("/order")
-                                                .and().method("GET")
-                                                .filters(f -> f.filters(authFilter))
-                                                .uri("http://localhost:8088"))
-                                .route("second-microservice", r -> r.path("/second")
-                                                .and().method("POST")
-                                                .filters(f -> f.filters(authFilter))
-                                                .uri("http://localhost:8082"))
-                                .route("auth-server", r -> r.path("/login")
-                                                .filters(f -> f.filters(authFilter))
-                                                .uri("http://localhost:8088"))
-                                .route("auth-server", r -> r.path("/register")
-                                                .uri("http://localhost:8088"))
-                                .route("auth-server", r -> r.path("/.well-known/jwks.json")
-                                                .uri("http://localhost:8088"))
-                                .route("auth-server", r -> r.path("/**")
-                                                .filters(f -> f.filters(authFilter))
-                                                .uri("http://localhost:8088"))
-                                .build();
-        }
+        // @Bean
+        // public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
+        // new org.springframework.cloud.gateway.route.RouteDefinition().
+
+        // return builder.routes()
+        // .route("auth-service", r -> r.path("/login")
+        // .filters(f -> f.filters(authFilter))
+        // .uri("http://localhost:8081"))
+        // .route("auth-service", r -> r.path("/users")
+        // .and().method("PUT")
+        // .filters(f -> f.filters(authFilter))
+        // .uri("http://localhost:8081"))
+        // .route("auth-service", r -> r.path("/users")
+        // .and().method("POST")
+        // .uri("http://localhost:8081"))
+        // .route("auth-service", r -> r.path("/public-key")
+        // .uri("http://localhost:8081"))
+        // .route("auth-service", r -> r.path("/.well-known/jwks.json")
+        // .uri("http://localhost:8081"))
+        // .route("product-service", r -> r.path("/product/**")
+        // .uri("http://localhost:8082"))
+        // .route("order-service", r -> r.path("/order/**")
+        // .uri("http://localhost:8083"))
+        // .route("auth-server", r -> r.path("/**")
+        // .filters(f -> f.filters(authFilter))
+        // .uri("http://localhost:8081"))
+        // .build();
+        // }
 
         @Bean
         public RestTemplate getRestTemplate() {

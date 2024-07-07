@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -25,7 +26,7 @@ import reactor.core.publisher.Mono;
 @Component
 @RefreshScope
 @Log4j2
-public class AuthFilter implements GatewayFilter {
+public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config> {
 
     @Autowired
     RouteValidator routeValidator;
@@ -36,12 +37,23 @@ public class AuthFilter implements GatewayFilter {
     @Autowired
     private AuthService authService;
 
+    public static class Config {
+    }
+
+    public AuthFilter() {
+        super(Config.class);
+    }
+
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+    public GatewayFilter apply(Config config) {
+        return (exchange, chain) -> filter(exchange, chain);
+    }
+
+    private Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 
         String token = "";
         ServerHttpRequest request = exchange.getRequest();
-
+        log.info("filter {}", request);
         if (isValidRoute(request)) {
             log.info("validating authentication token");
             if (isCredsMissing(request)) {
@@ -163,4 +175,5 @@ public class AuthFilter implements GatewayFilter {
                 .header("role", String.valueOf(claims.get("role")))
                 .build();
     }
+
 }

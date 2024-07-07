@@ -1,5 +1,11 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
+
+logging:
+  level:
+    io:
+      swagger: debug
 
 spring:
   application:
@@ -18,9 +24,73 @@ spring:
   cloud:
     gateway:
       routes:
-        - id: example-service
-          uri: http://localhost:8081
+        - id: auth-service
           predicates:
-            - Path=/example/**
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+            - Path=/auth/users
+            - Method=POST
+          filters:
+            - RewritePath=/auth/(?<segment>.*), /$\{segment}
+          uri: http://localhost:8081
+
+        - id: auth-service
+          predicates:
+            - Path=/auth/login
+          filters:
+            - RewritePath=/auth/(?<segment>.*), /$\{segment}
+            - AuthFilter
+          uri: http://localhost:8081
+
+        - id: auth-service
+          predicates:
+            - Path=/auth/users
+            - Method=PUT
+          filters:
+            - RewritePath=/auth/(?<segment>.*), /$\{segment}
+            - AuthFilter
+          uri: http://localhost:8081
+
+        - id: auth-service
+          predicates:
+            - Path=/auth/swagger-ui/**
+          filters:
+            - RewritePath=/auth/(?<segment>.*), /$\{segment}
+          uri: http://localhost:8081
+
+        - id: auth-service
+          predicates:
+            - Path=/auth/v3/api-docs/**
+          filters:
+            - RewritePath=/auth/(?<segment>.*), /$\{segment}
+          uri: http://localhost:8081
+
+        - id: order-service
+          predicates:
+            - Path=/orders/**
+          filters:
+            - RewritePath=/orders/(?<segment>.*), /$\{segment}
+          uri: http://localhost:8083
+
+        - id: product-service
+          predicates:
+            - Path=/products/**
+          filters:
+            - RewritePath=/products/(?<segment>.*), /$\{segment}
+          uri: http://localhost:8082
+
+springdoc:
+  api-docs:
+    enabled: true
+    groups:
+      enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    url: /v3/api-docs
+    config-url: /v3/api-docs/swagger-config
+    urls:
+      - url: /auth/v3/api-docs
+        name: Auth Service
+      - url: /orders/v3/api-docs
+        name: Order Service
+      - url: /products/v3/api-docs
+        name: Product Service

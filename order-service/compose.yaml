@@ -60,7 +60,7 @@ services:
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
       ME_CONFIG_MONGODB_ADMINPASSWORD: passwd
-      ME_CONFIG_MONGODB_URL: mongodb://root:passwd@mongodb:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://root:passwd@localhost:27017/ecomm?authSource=admin
       ME_CONFIG_BASICAUTH: false
     networks:
       - ecomm-nw
