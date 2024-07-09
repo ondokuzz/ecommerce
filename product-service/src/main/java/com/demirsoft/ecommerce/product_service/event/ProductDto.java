@@ -1,5 +1,6 @@
 package com.demirsoft.ecommerce.product_service.event;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
@@ -17,5 +18,6 @@ public class ProductDto {
     @NotEmpty(message = "Must not be Empty or NULL")
     private Double price;
 
+    @Min(value = 0)
     private int quantity;
 }

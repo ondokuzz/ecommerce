@@ -26,6 +26,9 @@ import com.demirsoft.ecommerce.auth_service.service.TokenService;
 import com.demirsoft.ecommerce.auth_service.service.UserService;
 import com.nimbusds.jose.jwk.JWKSet;
 
+import io.swagger.v3.oas.annotations.Hidden;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.log4j.Log4j2;
@@ -55,17 +58,18 @@ public class AuthenticationController {
         private ModelMapper modelMapperUserUpdateRequestToUser;
 
         @GetMapping("/public-key")
+        @Hidden
         public ResponseEntity<String> getPublicKey() {
                 return ResponseEntity.ok(tokenService.getPublicKey());
         }
 
         @GetMapping("/.well-known/jwks.json")
+        @Hidden
         public Map<String, Object> keys() {
                 return this.jwkSet.toJSONObject();
         }
 
         @PostMapping("/login")
-        @Tag(name = OpenApiConfig.ADD_AUTH_HEADER_TO_SWAGGER_DOC)
         public ResponseEntity<UserAuthenticationResponse> login(
                         @Valid @RequestBody UserAuthenticationRequest authenticationRequest) {
 
@@ -93,6 +97,7 @@ public class AuthenticationController {
         }
 
         @PutMapping("/users")
+        @Operation(security = { @SecurityRequirement(name = "bearerAuth") })
         @Tag(name = OpenApiConfig.ADD_AUTH_HEADER_TO_SWAGGER_DOC)
         @PreAuthorize("#updateRequest.username == authentication.name or  hasAuthority('SCOPE_ADMIN')")
         public ResponseEntity<User> updateUser(@Valid @RequestBody UserUpdateRequest updateRequest) {

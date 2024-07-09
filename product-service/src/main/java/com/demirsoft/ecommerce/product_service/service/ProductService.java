@@ -6,7 +6,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.kafka.support.Acknowledgment;
@@ -40,11 +39,9 @@ public class ProductService {
     @Autowired
     private ProductRepository productRepository;
 
-    @Autowired
-    private ReactiveMongoTemplate reactiveMongoTemplate;
-
-    @Autowired
-    private TransactionalOperator transactionalOperator;
+    // requieres mongo replicaset, so disabled temporarily
+    // @Autowired
+    // private TransactionalOperator transactionalOperator;
 
     @Autowired
     private InventoryRequestRepository inventoryRequestRepository;
@@ -107,7 +104,7 @@ public class ProductService {
                         () -> ack.acknowledge());
     }
 
-    public Mono<Boolean> checkForDuplicateOrderRequest(OrderCreated order) {
+    private Mono<Boolean> checkForDuplicateOrderRequest(OrderCreated order) {
 
         return getInventoryUpdateLogsForThisOrder(order)
                 .count()
@@ -123,7 +120,7 @@ public class ProductService {
 
     }
 
-    public Mono<Boolean> processRequest(OrderCreated order) {
+    private Mono<Boolean> processRequest(OrderCreated order) {
 
         var quantityProcessor = new ProductQuantityProcessor(order);
 
@@ -146,7 +143,7 @@ public class ProductService {
     @Transactional
     private void rejectOrder(OrderCreated order, List<String> reason) {
 
-        var inventoryUpdateLog = buidInventoryUpdateLog(order);
+        var inventoryUpdateLog = buildInventoryUnavailableLog(order);
         inventoryRequestRepository.save(inventoryUpdateLog);
 
         var orderFailed = buildOrderFailed(order, reason);
@@ -161,10 +158,6 @@ public class ProductService {
                 order.getCustomerId(),
                 ServiceType.INVENTORY_SERVICE.name(),
                 reason);
-    }
-
-    private InventoryUpdateLog buidInventoryUpdateLog(OrderCreated order) {
-        return new InventoryUpdateLog(null, order.getId(), InventoryRequestStatus.ITEMS_UNAVAILABLE);
     }
 
     @Transactional
@@ -198,11 +191,12 @@ public class ProductService {
             List<Product> products,
             OrderCreated order) {
         var productsSaveRequest = productRepository.saveAll(products);
-        var saveInventoryUpdateLogRequest = inventoryRequestRepository.save(buildInventoryUpdateLog(order));
+        var saveInventoryUpdateLogRequest = inventoryRequestRepository.save(buildInventoryAllocatedLog(order));
 
         return productsSaveRequest
                 .then(saveInventoryUpdateLogRequest)
-                .as(transactionalOperator::transactional)
+                // requieres mongo replicaset, so disabled temporarily
+                // .as(transactionalOperator::transactional)
                 .then(Mono.just(true));
     }
 
@@ -210,7 +204,12 @@ public class ProductService {
         throw new UnsupportedOperationException("Unimplemented method 'rollbackInventoryRepo'");
     }
 
-    private InventoryUpdateLog buildInventoryUpdateLog(OrderCreated order) {
+    private InventoryUpdateLog buildInventoryUnavailableLog(OrderCreated order) {
+        // setting null id creates a new log for each request
+        return new InventoryUpdateLog(null, order.getId(), InventoryRequestStatus.ITEMS_UNAVAILABLE);
+    }
+
+    private InventoryUpdateLog buildInventoryAllocatedLog(OrderCreated order) {
         // setting null id creates a new log for each request
         return new InventoryUpdateLog(null, order.getId(), InventoryRequestStatus.ITEMS_ALLOCATED);
     }

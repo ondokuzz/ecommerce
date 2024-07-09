@@ -4,25 +4,21 @@ server:
 
 logging:
   level:
+    web: debug
     io:
       swagger: debug
 
 spring:
   application:
     name: api-gateway
-
-  datasource:
-    url: jdbc:mysql://localhost:3306/jwt
-    username: root
-    password:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-
   cloud:
     gateway:
+      globalcors:
+        corsConfigurations:
+          "[/**]":
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
       routes:
         - id: auth-service
           predicates:

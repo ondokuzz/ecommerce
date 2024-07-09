@@ -173,6 +173,8 @@ public class AuthFilter extends AbstractGatewayFilterFactory<AuthFilter.Config> 
                 .mutate()
                 .header("id", String.valueOf(claims.get("id")))
                 .header("role", String.valueOf(claims.get("role")))
+                // .header("Authorization", token)
+                // .header("public-key", secret)
                 .build();
     }
 
