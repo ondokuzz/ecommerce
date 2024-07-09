@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Component
-@ConfigurationProperties(prefix = "com.demirsoft.ecommerce.config")
+@ConfigurationProperties(prefix = "ecommerce.config")
 @Getter
 @Setter
 @NoArgsConstructor
