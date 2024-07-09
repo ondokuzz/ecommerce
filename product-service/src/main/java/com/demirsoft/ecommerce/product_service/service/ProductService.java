@@ -12,7 +12,6 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.reactive.TransactionalOperator;
 
 import com.demirsoft.ecommerce.product_service.config.KafkaConsumerConfig;
 import com.demirsoft.ecommerce.product_service.entity.InventoryRequestStatus;
@@ -166,7 +165,8 @@ public class ProductService {
         AtomicBoolean dbOperationsSaved = new AtomicBoolean(false);
 
         return updateProductRepoAndInventoryUpdateLogAtomically(products, order)
-                .as(transactionalOperator::transactional)
+                // requieres mongo replicaset, so disabled temporarily
+                // .as(transactionalOperator::transactional)
                 .flatMap(prev_step_ok -> {
                     dbOperationsSaved.set(true);
 

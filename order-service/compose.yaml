@@ -20,7 +20,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENERS: CONTROLLER://kafka:9091,EXTERNAL://kafka:9092,INTERNAL://kafka:9093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://192.168.8.107:9092,INTERNAL://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:9092,INTERNAL://kafka:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_PROCESS_ROLES: broker,controller
@@ -84,6 +84,8 @@ services:
 
   # kafkacat:
   #   image: confluentinc/cp-kafkacat
+  #   networks:
+      - ecomm-nw
   #   command: sleep infinity
 
 volumes:

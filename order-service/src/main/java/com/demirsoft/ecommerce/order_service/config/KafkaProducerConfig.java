@@ -11,6 +11,7 @@ import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 
 import com.demirsoft.ecommerce.order_service.entity.Order;
+import com.demirsoft.ecommerce.order_service.event.OrderCreated;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,7 +23,18 @@ public class KafkaProducerConfig {
     PropertiesConfig propertiesConfig;
 
     @Bean
-    public ProducerFactory<String, Order> producerFactory() {
+    public ProducerFactory<String, OrderCreated> producerFactoryForOrderCreated() {
+        return this.<OrderCreated>producerFactory();
+
+    }
+
+    @Bean
+    public KafkaTemplate<String, OrderCreated> kafkaTemplateForOrderCreated() {
+        return this.<OrderCreated>kafkaTemplate();
+    }
+
+    @Bean
+    public <E> ProducerFactory<String, E> producerFactory() {
         Map<String, Object> config = new HashMap<>();
 
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, propertiesConfig.getKafkaAddress());
@@ -33,7 +45,7 @@ public class KafkaProducerConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, Order> kafkaTemplate() {
-        return new KafkaTemplate<String, Order>(producerFactory());
+    public <E> KafkaTemplate<String, E> kafkaTemplate() {
+        return new KafkaTemplate<String, E>(this.<E>producerFactory());
     }
 }

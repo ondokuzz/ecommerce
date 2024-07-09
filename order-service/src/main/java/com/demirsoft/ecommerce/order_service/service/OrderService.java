@@ -2,7 +2,9 @@ package com.demirsoft.ecommerce.order_service.service;
 
 import java.util.List;
 
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,7 @@ import com.demirsoft.ecommerce.order_service.entity.Cart;
 import com.demirsoft.ecommerce.order_service.entity.Order;
 import com.demirsoft.ecommerce.order_service.entity.OrderItem;
 import com.demirsoft.ecommerce.order_service.entity.OrderStatus;
+import com.demirsoft.ecommerce.order_service.event.OrderCreated;
 import com.demirsoft.ecommerce.order_service.exception.CartNotFoundException;
 import com.demirsoft.ecommerce.order_service.exception.OrderEmptyException;
 import com.demirsoft.ecommerce.order_service.exception.OrderNotFoundException;
@@ -27,7 +30,11 @@ public class OrderService {
     private CartService cartService;
 
     @Autowired
-    private KafkaTemplate<String, Order> kafkaTemplate;
+    private KafkaTemplate<String, OrderCreated> kafkaTemplate;
+
+    @Autowired
+    @Qualifier("OrderToOrderCreated")
+    ModelMapper modelMapperOrderToOrderCreated;
 
     private static final String ORDER_CREATED = "order_created";
 
@@ -46,7 +53,7 @@ public class OrderService {
 
         if (customerCart.getItems().isEmpty())
             throw new OrderEmptyException(
-                    String.format("order id: %s, customer id: %d", order.getId(), order.getCustomerId()));
+                    String.format("Fill the Cart first, for customer id: %d", order.getCustomerId()));
 
         order.setItems(customerCart.getItems());
         order.setStatus(OrderStatus.CREATED.name());
@@ -55,7 +62,10 @@ public class OrderService {
 
         cartService.clearCart(order.getCustomerId());
 
-        kafkaTemplate.send(ORDER_CREATED, order.getId(), savedOrder);
+        var orderCreated = new OrderCreated();
+        modelMapperOrderToOrderCreated.map(savedOrder, orderCreated);
+
+        kafkaTemplate.send(ORDER_CREATED, orderCreated.getId(), orderCreated);
 
         return savedOrder;
     }

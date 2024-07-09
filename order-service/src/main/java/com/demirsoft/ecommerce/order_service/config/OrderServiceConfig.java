@@ -10,6 +10,7 @@ import com.demirsoft.ecommerce.order_service.dto.CartDto;
 import com.demirsoft.ecommerce.order_service.dto.OrderDto;
 import com.demirsoft.ecommerce.order_service.entity.Cart;
 import com.demirsoft.ecommerce.order_service.entity.Order;
+import com.demirsoft.ecommerce.order_service.event.OrderCreated;
 
 @Configuration
 public class OrderServiceConfig {
@@ -29,6 +30,30 @@ public class OrderServiceConfig {
                 map(source.getShippingAddress().getCity(), destination.getShippingAddress().getCity());
                 map(source.getShippingAddress().getStreet(), destination.getShippingAddress().getStreet());
 
+            }
+        });
+
+        return modelMapper;
+    }
+
+    // private List<OrderItem> items;
+
+    @Bean
+    @Qualifier("OrderToOrderCreated")
+    public ModelMapper modelMapperForOrderToOrderCreated() {
+        ModelMapper modelMapper = new ModelMapper();
+
+        modelMapper.addMappings(new PropertyMap<Order, OrderCreated>() {
+            protected void configure() {
+
+                map().setId(source.getId());
+                map().setCustomerId(source.getCustomerId());
+                map().setCreditCardInfo(source.getCreditCardInfo());
+                map().setPrice(source.getPrice());
+                map(source.getShippingAddress().getState(), destination.getShippingAddress().getState());
+                map(source.getShippingAddress().getCity(), destination.getShippingAddress().getCity());
+                map(source.getShippingAddress().getStreet(), destination.getShippingAddress().getStreet());
+                map().setItems(source.getItems());
             }
         });
 

@@ -22,6 +22,8 @@ import com.demirsoft.ecommerce.order_service.exception.OrderEmptyException;
 import com.demirsoft.ecommerce.order_service.exception.OrderNotFoundException;
 import com.demirsoft.ecommerce.order_service.service.OrderService;
 
+import jakarta.validation.Valid;
+
 @RestController
 public class OrderController {
     @Autowired
@@ -43,7 +45,7 @@ public class OrderController {
     }
 
     @PutMapping("/carts")
-    public ResponseEntity<Cart> updateCart(@RequestBody CartDto newCart) throws CartNotFoundException {
+    public ResponseEntity<Cart> updateCart(@Valid @RequestBody CartDto newCart) throws CartNotFoundException {
         Cart cart = modelMapperCartDtoToCart.map(newCart, Cart.class);
 
         Cart updatedCart = orderService.updateCart(cart);
@@ -53,7 +55,7 @@ public class OrderController {
     }
 
     @PostMapping("/orders")
-    public ResponseEntity<Order> createOrder(@RequestBody OrderDto orderRequest) throws OrderEmptyException {
+    public ResponseEntity<Order> createOrder(@Valid @RequestBody OrderDto orderRequest) throws OrderEmptyException {
         Order order = modelMapperOrderDtoToOrder.map(orderRequest, Order.class);
 
         Order createdOrder = orderService.createOrder(order);

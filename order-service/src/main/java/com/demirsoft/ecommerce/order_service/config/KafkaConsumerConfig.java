@@ -1,8 +1,10 @@
 package com.demirsoft.ecommerce.order_service.config;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -21,7 +23,7 @@ import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 
-import com.demirsoft.ecommerce.order_service.event.OrderCreated;
+import com.demirsoft.ecommerce.order_service.event.OrderFailed;
 
 import lombok.extern.log4j.Log4j2;
 
@@ -30,66 +32,104 @@ import lombok.extern.log4j.Log4j2;
 @Log4j2
 public class KafkaConsumerConfig {
 
-    @Autowired
-    PropertiesConfig propertiesConfig;
+        public class TypeMapping<E> {
+                private final String value;
 
-    public static final String CONSUMER_GROUP = "order_consumer_group";
+                public TypeMapping(String value) {
+                        this.value = value;
+                }
 
-    @Bean
-    public ConsumerFactory<String, OrderCreated> consumerFactory() {
-        Map<String, Object> config = new HashMap<>();
+                public String getValue() {
+                        return value;
+                }
+        }
 
-        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                propertiesConfig.getKafkaAddress());
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, CONSUMER_GROUP);
-        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-                StringDeserializer.class);
-        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-                JsonDeserializer.class);
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
-        config.put(JsonDeserializer.TYPE_MAPPINGS,
-                "com.demirsoft.ecommerce.order_service.event.OrderCreated:com.demirsoft.ecommerce.product_service.event.OrderCreated");
-        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        @Autowired
+        PropertiesConfig propertiesConfig;
 
-        return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(),
-                new ErrorHandlingDeserializer<>(new JsonDeserializer<>()));
-    }
+        public static final String CONSUMER_GROUP = "order_consumer_group";
 
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, OrderCreated> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, OrderCreated> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setCommonErrorHandler(commonErrorHandler());
-        factory.setConsumerFactory(consumerFactory());
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
-        return factory;
-    }
+        @Bean
+        public ConsumerFactory<String, OrderFailed> consumerFactoryForOrderFailed(
+                        TypeMapping<OrderFailed> typeMapping) {
+                return this.<OrderFailed>consumerFactory(typeMapping);
+        }
 
-    private CommonErrorHandler commonErrorHandler() {
-        CommonErrorHandler commonErrorHandler = new CommonErrorHandler() {
-            @Override
-            public void handleOtherException(Exception thrownException, Consumer<?, ?> consumer,
-                    MessageListenerContainer container, boolean batchListener) {
-                log.error("handleOtherException: kafka listener, error occured. reason: {}",
-                        thrownException.getMessage());
-            }
+        @Bean
+        public TypeMapping<OrderFailed> orderFailedTypeMappings() {
+                String mappings[] = {
+                                "com.demirsoft.ecommerce.product_service.event.OrderFailed:com.demirsoft.ecommerce.order_service.event.OrderFailed",
+                                "com.demirsoft.ecommerce.payment_service.event.OrderFailed:com.demirsoft.ecommerce.order_service.event.OrderFailed",
+                                "com.demirsoft.ecommerce.shipment_service.event.OrderFailed:com.demirsoft.ecommerce.order_service.event.OrderFailed"
+                };
 
-            @Override
-            public boolean handleOne(Exception thrownException, ConsumerRecord<?, ?> record,
-                    Consumer<?, ?> consumer,
-                    MessageListenerContainer container) {
-                log.error("handleOne: kafka listener, error occured for topic: {}, reason: {}",
-                        record.topic(),
-                        thrownException.getMessage());
-                return true;
-            }
+                String joinedMappings = Arrays.asList(mappings).stream().collect(Collectors.joining(","));
 
-            @Override
-            public void handleRemaining(Exception thrownException, List<ConsumerRecord<?, ?>> records,
-                    Consumer<?, ?> consumer, MessageListenerContainer container) {
-                log.error("handleRemaining: kafka listener, remaining error. reason: {}",
-                        thrownException.getMessage());
-            }
-        };
-        return commonErrorHandler;
-    }
+                return new TypeMapping<>(joinedMappings);
+        }
+
+        @Bean
+        public ConcurrentKafkaListenerContainerFactory<String, OrderFailed> kafkaListenerContainerFactoryForOrderFailed(
+                        TypeMapping<OrderFailed> typeMapping) {
+                return this.<OrderFailed>kafkaListenerContainerFactory(typeMapping);
+        }
+
+        @Bean
+        public <E> ConsumerFactory<String, E> consumerFactory(TypeMapping<E> typeMapping) {
+                Map<String, Object> config = new HashMap<>();
+
+                config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+                                propertiesConfig.getKafkaAddress());
+                config.put(ConsumerConfig.GROUP_ID_CONFIG, CONSUMER_GROUP);
+                config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+                                StringDeserializer.class);
+                config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+                                JsonDeserializer.class);
+                config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+                config.put(JsonDeserializer.TYPE_MAPPINGS,
+                                typeMapping.getValue());
+                config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+
+                return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(),
+                                new ErrorHandlingDeserializer<>(new JsonDeserializer<>()));
+        }
+
+        @Bean
+        public <E> ConcurrentKafkaListenerContainerFactory<String, E> kafkaListenerContainerFactory(
+                        TypeMapping<E> typeMapping) {
+                ConcurrentKafkaListenerContainerFactory<String, E> factory = new ConcurrentKafkaListenerContainerFactory<>();
+                factory.setCommonErrorHandler(commonErrorHandler());
+                factory.setConsumerFactory(this.<E>consumerFactory(typeMapping));
+                factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+                return factory;
+        }
+
+        private CommonErrorHandler commonErrorHandler() {
+                CommonErrorHandler commonErrorHandler = new CommonErrorHandler() {
+                        @Override
+                        public void handleOtherException(Exception thrownException, Consumer<?, ?> consumer,
+                                        MessageListenerContainer container, boolean batchListener) {
+                                log.error("handleOtherException: kafka listener, error occured. reason: {}",
+                                                thrownException.getMessage());
+                        }
+
+                        @Override
+                        public boolean handleOne(Exception thrownException, ConsumerRecord<?, ?> record,
+                                        Consumer<?, ?> consumer,
+                                        MessageListenerContainer container) {
+                                log.error("handleOne: kafka listener, error occured for topic: {}, reason: {}",
+                                                record.topic(),
+                                                thrownException.getMessage());
+                                return true;
+                        }
+
+                        @Override
+                        public void handleRemaining(Exception thrownException, List<ConsumerRecord<?, ?>> records,
+                                        Consumer<?, ?> consumer, MessageListenerContainer container) {
+                                log.error("handleRemaining: kafka listener, remaining error. reason: {}",
+                                                thrownException.getMessage());
+                        }
+                };
+                return commonErrorHandler;
+        }
 }
