@@ -2,6 +2,7 @@ package com.demirsoft.ecommerce.order_service;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,10 +10,31 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.assertj.core.util.Arrays;
 import org.junit.ClassRule;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,14 +43,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.MediaType;
-import org.springframework.kafka.annotation.EnableKafka;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.DirtiesContext.ClassMode;
+import org.springframework.test.annotation.DirtiesContext.MethodMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
+import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import com.demirsoft.ecommerce.order_service.dto.CartDto;
 import com.demirsoft.ecommerce.order_service.dto.OrderDto;
@@ -36,23 +63,15 @@ import com.demirsoft.ecommerce.order_service.entity.Address;
 import com.demirsoft.ecommerce.order_service.entity.Order;
 import com.demirsoft.ecommerce.order_service.entity.OrderItem;
 import com.demirsoft.ecommerce.order_service.entity.OrderStatus;
+import com.demirsoft.ecommerce.order_service.event.OrderCreated;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.extern.log4j.Log4j2;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
 @Testcontainers
-@TestPropertySource(properties = {
-		"spring.kafka.consumer.auto-offset-reset=earliest",
-		"spring.kafka.bootstrap-servers=localhost:9092",
-		"spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer",
-		"spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer",
-		"spring.kafka.consumer.group-id=order-service-test",
-		"spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer",
-		"spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer",
-		"spring.kafka.consumer.properties.spring.json.trusted.packages=*"
-})
-@EnableKafka
+@Log4j2
 public class OrderServiceApplicationTests {
 
 	@Container
@@ -60,17 +79,20 @@ public class OrderServiceApplicationTests {
 	@Autowired
 	private MongoTemplate mongoTemplate;
 
+	@SuppressWarnings("resource")
 	@ClassRule
-	// public static KafkaContainer kafka = new
-	// KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:5.4.3"));
-	// // @Autowired
-	// // private KafkaTemplate<String, String> kafkaTemplate;
+	public static KafkaContainer kafkaContainer = new KafkaContainer(
+			DockerImageName.parse("confluentinc/cp-kafka:latest"))
+			.withKraft()
+			.withEnv("TOPIC_AUTO_CREATE", "true")
+			.withEnv("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true");
 
-	// @Autowired
-	// private KafkaConsumer consumer;
-
-	// @Autowired
-	// private KafkaProducer producer;
+	private static final Map<String, Object> producerProps = new HashMap<>();
+	private static final Map<String, Object> consumerProps = new HashMap<>();
+	private static final Map<String, KafkaProducer<String, ?>> producers = new HashMap<>();
+	private static final Map<String, KafkaConsumer<String, ?>> consumers = new HashMap<>();
+	private static Admin admin;
+	private static final Map<String, NewTopic> topics = new HashMap<>();
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -82,13 +104,36 @@ public class OrderServiceApplicationTests {
 	public static void setUpClass() {
 		mongoDBContainer.start();
 		System.setProperty("spring.data.mongodb.uri", mongoDBContainer.getReplicaSetUrl());
-		// System.setProperty("spring.kafka.bootstrap-servers",
-		// kafkaContainer.getBootstrapServers());
+
+		log.info("starting kafka container");
+		kafkaContainer.start();
+		System.setProperty("ecommerce.config.kafka-address", kafkaContainer.getBootstrapServers());
+		System.setProperty("spring.kafka.bootstrap-servers", kafkaContainer.getBootstrapServers());
+
+		createKafkaAdmin();
+	}
+
+	@AfterAll
+	private static void tearDownClass() {
+		producers.entrySet().stream().forEach(pe -> pe.getValue().close());
+		consumers.entrySet().stream().forEach(ce -> ce.getValue().close());
+		admin.close();
+		kafkaContainer.stop();
+		kafkaContainer.close();
+		mongoDBContainer.stop();
+		mongoDBContainer.close();
 	}
 
 	@BeforeEach
-	public void setUp(WebApplicationContext context) {
+	public void setUp(WebApplicationContext context) throws Exception {
 		mongoTemplate.getDb().drop();
+		recreateTopic(OrderCreated.class);
+		subscribeForEvent(OrderCreated.class);
+	}
+
+	@AfterEach
+	public void tearDown(WebApplicationContext context) throws Exception {
+		unsubscribeFromEvent(OrderCreated.class);
 	}
 
 	private CartDto createEmptyCartDto(Long customerId) {
@@ -119,70 +164,38 @@ public class OrderServiceApplicationTests {
 		return newCartDto;
 	}
 
-	// private Cart createFullCart(Long customerId) {
-	// OrderItem item1 = new OrderItem();
-	// item1.setProductId("100");
-	// item1.setPrice(11.0);
-
-	// OrderItem item2 = new OrderItem();
-	// item2.setProductId("101");
-	// item2.setPrice(12.0);
-
-	// var items = new LinkedList<OrderItem>();
-	// items.add(item1);
-	// items.add(item2);
-
-	// Cart newCart = new Cart("1", customerId, items);
-
-	// return newCart;
-	// }
-
 	private static final String CREDIT_CARD_NO = "555444666";
 
 	private OrderDto createFullOrderDto(long customerId) {
 		return new OrderDto(1L, new Address("turkiye", "istanbul", "kosuyolu"), CREDIT_CARD_NO);
 	}
 
-	@Test
-	public void testKafkaSendAndReceive() throws Exception {
-		// String testMessage = "Hello, Kafka!";
-		// kafkaTemplate.send("test-topic", testMessage);
+	// @Test
+	// public void kafkaTest() throws Exception {
+	// var consumer = getKafkaConsumer(OrderCreated.class);
+	// var producer = getKafkaProducer(OrderCreated.class);
 
-		// Map<String, Object> consumerProps = KafkaTestUtils.consumerProps("testGroup",
-		// "true",
-		// kafkaContainer.getBootstrapServers());
-		// consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-		// StringDeserializer.class);
-		// consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-		// StringDeserializer.class);
-		// consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+	// subscribeForEvent(OrderCreated.class);
 
-		// DefaultKafkaConsumerFactory<String, String> consumerFactory = new
-		// DefaultKafkaConsumerFactory<>(consumerProps);
-		// ContainerProperties containerProperties = new
-		// ContainerProperties("test-topic");
+	// producer.send(
+	// new ProducerRecord<String, OrderCreated>(OrderCreated.class.getName(),
+	// new OrderCreated("234", Long.valueOf(1L),
+	// List.of(new OrderItem("123", 23, 98.0)), 345.0, "2323",
+	// new Address("tr", "ist", "kosuyolu"))));
 
-		// KafkaMessageListenerContainer<String, String> container = new
-		// KafkaMessageListenerContainer<>(consumerFactory,
-		// containerProperties);
-		// container.setupMessageListener((MessageListener<String, String>) record -> {
-		// log.info("kafka working");
-		// });
-		// container.start();
+	// producer.send(
+	// new ProducerRecord<String, OrderCreated>(OrderCreated.class.getName(),
+	// new OrderCreated("234", Long.valueOf(1L),
+	// List.of(new OrderItem("123", 23, 98.0)), 345.0, "2323",
+	// new Address("tr", "ist", "kosuyolu"))));
 
-		// // wait for the listener to receive the message
-		// Thread.sleep(5000);
+	// var records = waitForEventInstance(OrderCreated.class);
+	// records.forEach(r -> {
+	// log.info("kafka key: {}", r.key());
+	// log.info("kafka value: {}", r.value());
+	// });
 
-		// container.stop();
-
-		// String data = "Sending with our own simple KafkaProducer";
-
-		// producer.send(new ProducerRecord("order-topic", data));
-
-		// var messageConsumed = consumer.poll(Duration.ofSeconds(10));
-		// log.info("aaa {}", messageConsumed);
-
-	}
+	// }
 
 	@Test
 	public void givenCustomerId_whenGetCartOrCreateCalledTwice_thenReturnTheSameCart() throws Exception {
@@ -298,6 +311,24 @@ public class OrderServiceApplicationTests {
 		mockMvc.perform(post("/orders")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(asJsonString(orderDto)))
+				.andDo(h -> {
+					OrderCreated orderCreated = createOrderCreatedFromDtos(orderDto, cartDto);
+
+					var receivedRecords = waitForEventInstance(OrderCreated.class);
+
+					assertNotNull(receivedRecords);
+					receivedRecords.forEach(r -> log.info("received OrderCreated instance: {}", r.value()));
+					assertEquals(1, receivedRecords.count());
+					assertEquals(receivedRecords.iterator().hasNext(), true);
+					OrderCreated received = receivedRecords.iterator().next().value();
+					assertNotNull(received.getId());
+					assertEquals(orderCreated.getCustomerId(), received.getCustomerId());
+					assertEquals(orderCreated.getItems(), received.getItems());
+					assertEquals(orderCreated.getPrice(), received.getPrice());
+					assertEquals(orderCreated.getItems(), received.getItems());
+					assertEquals(orderCreated.getCreditCardInfo(), received.getCreditCardInfo());
+					assertEquals(orderCreated.getShippingAddress(), received.getShippingAddress());
+				})
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").isNotEmpty())
 				.andExpect(jsonPath("$.customerId").value(orderDto.getCustomerId()))
@@ -322,6 +353,17 @@ public class OrderServiceApplicationTests {
 				.andExpect(jsonPath("$.id").isNotEmpty())
 				.andExpect(jsonPath("$.customerId").value(customerId))
 				.andExpect(jsonPath("$.items", hasSize(equalTo(0))));
+
+	}
+
+	private OrderCreated createOrderCreatedFromDtos(OrderDto orderDto, CartDto cartDto) {
+		OrderCreated orderCreated = new OrderCreated(null,
+				1L,
+				cartDto.getItems().stream().toList(),
+				cartDto.getItems().stream().mapToDouble(OrderItem::getPrice).sum(),
+				orderDto.getCreditCardInfo(),
+				orderDto.getShippingAddress());
+		return orderCreated;
 	}
 
 	@Test
@@ -457,4 +499,121 @@ public class OrderServiceApplicationTests {
 			throw new RuntimeException(e);
 		}
 	}
+
+	private static Map<String, Object> getProducerProps() {
+		producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
+		producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+		producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+
+		return producerProps;
+	}
+
+	private static Map<String, Object> getConsumerProps() {
+		consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
+		consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-group");
+		consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+		consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+		consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+		consumerProps.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+		consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+		return consumerProps;
+	}
+
+	private static void createKafkaAdmin() {
+		Properties properties = new Properties();
+		properties.put(
+				AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,
+				kafkaContainer.getBootstrapServers());
+		admin = Admin.create(properties);
+		log.info("kafka admin created");
+	}
+
+	private static <T> void createTopicAsSingleton(Class<T> clazz) throws InterruptedException, ExecutionException {
+		createAsSingleton(
+				topics,
+				clazz.getCanonicalName(),
+				() -> createTopic(clazz));
+	}
+
+	private static <T> void recreateTopic(Class<T> clazz) throws InterruptedException, ExecutionException {
+		deleteTopicFromSingleton(clazz);
+		createTopicAsSingleton(clazz);
+	}
+
+	private static <T> void deleteTopicFromSingleton(Class<T> clazz) {
+		log.info("deleting topic for: {}", clazz.getSimpleName());
+
+		try {
+			admin.deleteTopics(List.of(clazz.getSimpleName())).all().get();
+			topics.remove(clazz.getCanonicalName());
+			log.info("deleted topic");
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static <T> NewTopic createTopic(Class<T> clazz) {
+		log.info("creating topic for: {}", clazz.getSimpleName());
+		NewTopic newTopic = TopicBuilder
+				.name(clazz.getSimpleName())
+				.build();
+
+		try {
+			admin.createTopics(List.of(newTopic)).all().get();
+			log.info("created topic");
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+		return newTopic;
+	}
+
+	@SuppressWarnings("unchecked")
+	private <E> KafkaConsumer<String, E> getKafkaConsumer(Class<E> clazz) throws Exception {
+		createTopicAsSingleton(clazz);
+
+		return (KafkaConsumer<String, E>) createAsSingleton(
+				consumers,
+				clazz.getCanonicalName(),
+				() -> new KafkaConsumer<String, E>(getConsumerProps()));
+	}
+
+	@SuppressWarnings("unchecked")
+	private <E> KafkaProducer<String, E> getKafkaProducer(Class<E> clazz) throws Exception {
+		createTopicAsSingleton(clazz);
+
+		return (KafkaProducer<String, E>) createAsSingleton(
+				producers,
+				clazz.getCanonicalName(),
+				() -> new KafkaProducer<String, E>(getProducerProps()));
+	}
+
+	private static <T, M extends Map<String, T>> T createAsSingleton(M map, String className,
+			Supplier<T> supplier) {
+		return (T) map.computeIfAbsent(className, k -> supplier.get());
+	}
+
+	@SuppressWarnings("unchecked")
+	private <E> RecordMetadata sendEvent(E instanceToSend) throws Exception {
+		Class<E> eventClass = (Class<E>) instanceToSend.getClass();
+		KafkaProducer<String, E> producer = getKafkaProducer(eventClass);
+		return producer.send(new ProducerRecord<String, E>(eventClass.getSimpleName(), instanceToSend))
+				.get();
+	}
+
+	private <E extends Object> void subscribeForEvent(Class<E> clazz) throws Exception {
+		createTopicAsSingleton(clazz);
+
+		getKafkaConsumer(clazz).subscribe(List.of(clazz.getSimpleName()));
+	}
+
+	private <E extends Object> ConsumerRecords<String, E> waitForEventInstance(Class<E> clazz)
+			throws Exception {
+
+		return getKafkaConsumer(clazz).poll(Duration.ofSeconds(30));
+	}
+
+	private <E extends Object> void unsubscribeFromEvent(Class<E> clazz) throws Exception {
+		getKafkaConsumer((Class<E>) clazz).unsubscribe();
+	}
+
 }

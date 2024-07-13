@@ -14,33 +14,24 @@ import java.util.LinkedList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
-import com.demirsoft.ecommerce.order_service.config.OrderServiceConfig;
 import com.demirsoft.ecommerce.order_service.entity.Cart;
 import com.demirsoft.ecommerce.order_service.entity.OrderItem;
 import com.demirsoft.ecommerce.order_service.exception.CartNotFoundException;
 import com.demirsoft.ecommerce.order_service.repository.CartRepository;
 import com.demirsoft.ecommerce.order_service.service.CartService;
 
-@ExtendWith(SpringExtension.class)
-@Import(OrderServiceConfig.class)
+@SpringBootTest
 public class CartServiceTest {
 
-    @Mock
+    @MockBean
     private CartRepository cartRepository;
 
-    @InjectMocks
+    @Autowired
     private CartService cartService;
-
-    // @BeforeEach
-    // public void setUp() {
-    // MockitoAnnotations.openMocks(this);
-    // }
 
     private Cart createfullCart(Long customerId) {
         OrderItem item1 = new OrderItem();
@@ -106,6 +97,7 @@ public class CartServiceTest {
         Cart existingCart = new Cart("1", customerId, new LinkedList<OrderItem>());
 
         when(cartRepository.findByCustomerId(customerId)).thenReturn(List.of(existingCart));
+        when(cartRepository.save(newCart)).thenReturn(newCart);
 
         Cart result = cartService.updateCart(newCart);
         assertEquals(newCart, result);

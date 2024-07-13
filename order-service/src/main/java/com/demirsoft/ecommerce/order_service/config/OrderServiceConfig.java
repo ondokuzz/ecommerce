@@ -36,8 +36,6 @@ public class OrderServiceConfig {
         return modelMapper;
     }
 
-    // private List<OrderItem> items;
-
     @Bean
     @Qualifier("OrderToOrderCreated")
     public ModelMapper modelMapperForOrderToOrderCreated() {

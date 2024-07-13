@@ -36,7 +36,7 @@ public class OrderService {
     @Qualifier("OrderToOrderCreated")
     ModelMapper modelMapperOrderToOrderCreated;
 
-    private static final String ORDER_CREATED = "order_created";
+    private static final String ORDER_CREATED = OrderCreated.class.getSimpleName();
 
     public Cart getCartOrCreate(Long customerId) {
         return cartService.getCartOrCreate(customerId);
