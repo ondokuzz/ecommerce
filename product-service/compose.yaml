@@ -1,0 +1,47 @@
+networks:
+  ecomm-nw:
+    driver: bridge
+    name: ecomm-nw
+
+services:
+  mongodb-product-service:
+    image: mongo:latest
+    container_name: mongodb-product-service
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: passwd
+      MONGO_INITDB_DATABASE: ecomm
+    networks:
+      - ecomm-nw
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb-product-service-data:/data/db
+
+  mongo-express-payment-service:
+    image: mongo-express:latest
+    container_name: mongo-express-payment-service
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://root:passwd@mongodb-product-service:27017/ecomm?authSource=admin"
+      ME_CONFIG_BASICAUTH: false
+    networks:
+      - ecomm-nw
+    ports:
+      - 28017:8081
+    depends_on:
+      - mongodb-product-service
+
+
+  product-service:
+    image: ecommerce/product-service:0.0.1-SNAPSHOT
+    container_name: product-service
+    networks:
+      - ecomm-nw
+    ports:
+      - 8082:8082
+    depends_on:
+      - mongodb-product-service
+
+volumes:
+  mongodb-product-service-data:
+

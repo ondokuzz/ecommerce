@@ -151,13 +151,15 @@
 			<scope>test</scope>
 		</dependency>
 
-
-
 	</dependencies>
 
 	<distributionManagement>
-
-	</distributionManagement>
+       <repository>
+         <id>internal.repo</id>
+         <name>Internal Repo</name>
+         <url>file:///${basedir}/images</url>
+       </repository>
+   </distributionManagement>
 
 	<build>
 		<plugins>

@@ -39,16 +39,25 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.mongo.MongoReactiveRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.annotation.DirtiesContext.ClassMode;
-import org.springframework.test.annotation.DirtiesContext.MethodMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.containers.KafkaContainer;
@@ -64,15 +73,22 @@ import com.demirsoft.ecommerce.order_service.entity.Order;
 import com.demirsoft.ecommerce.order_service.entity.OrderItem;
 import com.demirsoft.ecommerce.order_service.entity.OrderStatus;
 import com.demirsoft.ecommerce.order_service.event.OrderCreated;
+import com.demirsoft.ecommerce.order_service.repository.CartRepository;
+import com.demirsoft.ecommerce.order_service.repository.OrderRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.log4j.Log4j2;
 
 @SpringBootTest
+@EnableAutoConfiguration(exclude = {
+		KafkaAutoConfiguration.class })
 @AutoConfigureMockMvc
 @Testcontainers
 @Log4j2
 public class OrderServiceApplicationTests {
+
+	@MockBean
+	KafkaTemplate<String, Object> kafkaTemplate;
 
 	@Container
 	public static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10");
@@ -544,8 +560,8 @@ public class OrderServiceApplicationTests {
 		log.info("deleting topic for: {}", clazz.getSimpleName());
 
 		try {
-			admin.deleteTopics(List.of(clazz.getSimpleName())).all().get();
 			topics.remove(clazz.getCanonicalName());
+			admin.deleteTopics(List.of(clazz.getSimpleName())).all().get();
 			log.info("deleted topic");
 		} catch (InterruptedException | ExecutionException e) {
 			e.printStackTrace();
@@ -569,8 +585,6 @@ public class OrderServiceApplicationTests {
 
 	@SuppressWarnings("unchecked")
 	private <E> KafkaConsumer<String, E> getKafkaConsumer(Class<E> clazz) throws Exception {
-		createTopicAsSingleton(clazz);
-
 		return (KafkaConsumer<String, E>) createAsSingleton(
 				consumers,
 				clazz.getCanonicalName(),
@@ -579,8 +593,6 @@ public class OrderServiceApplicationTests {
 
 	@SuppressWarnings("unchecked")
 	private <E> KafkaProducer<String, E> getKafkaProducer(Class<E> clazz) throws Exception {
-		createTopicAsSingleton(clazz);
-
 		return (KafkaProducer<String, E>) createAsSingleton(
 				producers,
 				clazz.getCanonicalName(),

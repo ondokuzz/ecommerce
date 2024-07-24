@@ -1,0 +1,36 @@
+networks:
+  ecomm-nw:
+    driver: bridge
+    name: ecomm-nw
+
+services:
+  mysql-auth-service:
+    image: 'mysql:8.1'
+    container_name: mysql-auth-service
+    environment:
+      MYSQL_DATABASE: mydb
+      MYSQL_ROOT_PASSWORD: passwd
+      MYSQL_USER: user
+      MYSQL_PASSWORD: passwd
+    networks:
+      - ecomm-nw
+    ports:
+      - 3306:3306
+    volumes:
+      - mysql-auth-service-data:/data/mysqldb
+
+  auth-service:
+    image: ecommerce/auth-service:0.0.1-SNAPSHOT
+    container_name: auth-service
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    networks:
+      - ecomm-nw
+    ports:
+      - 8081:8081
+    depends_on:
+      - mysql-auth-service
+
+volumes:
+  mysql-auth-service-data:
+

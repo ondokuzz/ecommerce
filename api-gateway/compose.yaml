@@ -1,0 +1,13 @@
+networks:
+  ecomm-nw:
+    driver: bridge
+    name: ecomm-nw
+
+services:
+  api-gateway-service:
+    image: 'ecommerce/api-gateway:0.0.1-SNAPSHOT'
+    container_name: api-gateway-service
+    networks:
+      - ecomm-nw
+    ports:
+      - 8080:8080

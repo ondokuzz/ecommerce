@@ -40,47 +40,47 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
 
-  mongodb:
+  mongodb-order-service:
     image: mongo:latest
-    container_name: mongodb
+    container_name: mongodb-order-service
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: passwd
       MONGO_INITDB_DATABASE: ecomm
+      MONGO_PORT: 27018
     networks:
       - ecomm-nw
     ports:
-      - 27017:27017
+      - 27018:27018
     volumes:
-      - mongo-data:/data/db
+      - ./src/main/resources/mongod.conf:/etc/mongod.conf
+      - mongodb-order-service-data:/data/db
+    command: mongod -f /etc/mongod.conf
 
-  mongo-express:
+
+  mongo-express-order-service:
     image: mongo-express:latest
-    container_name: mongoexpress
+    container_name: mongoexpress-order-service
     environment:
-      ME_CONFIG_MONGODB_URL: "mongodb://root:passwd@mongodb:27017/ecomm?authSource=admin"
+      ME_CONFIG_MONGODB_URL: "mongodb://root:passwd@mongodb-order-service:27018/ecomm?authSource=admin"
       ME_CONFIG_BASICAUTH: false
     networks:
       - ecomm-nw
     ports:
-      - 28017:8081
+      - 28018:8081
     depends_on:
-      - mongodb
+      - mongodb-order-service
 
-  mysql:
-    image: 'mysql:8.1'
-    container_name: mysql
-    environment:
-      MYSQL_DATABASE: mydb
-      MYSQL_ROOT_PASSWORD: passwd
-      MYSQL_USER: user
-      MYSQL_PASSWORD: passwd
+  order-service:
+    image: ecommerce/order-service:0.0.1-SNAPSHOT
+    container_name: order-service
     networks:
       - ecomm-nw
     ports:
-      - 3306:3306
-    volumes:
-      - mysql-data:/data/mysqldb
+      - 8083:8083
+    depends_on:
+      - mongodb-order-service
+
 
   # kafkacat:
   #   image: confluentinc/cp-kafkacat
@@ -90,6 +90,5 @@ services:
 
 volumes:
   kafka-data:
-  mongo-data:
-  mysql-data:
+  mongodb-order-service-data:
 

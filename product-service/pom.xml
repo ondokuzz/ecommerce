@@ -102,6 +102,13 @@
 		</dependency>
 
 	</dependencies>
+	<distributionManagement>
+       <repository>
+         <id>internal.repo</id>
+         <name>Internal Repo</name>
+         <url>file:///${basedir}/images</url>
+       </repository>
+   </distributionManagement>
 
 	<build>
 		<plugins>
@@ -109,6 +116,9 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
+					<image>
+						<name>ecommerce/${project.artifactId}:${project.version}</name>
+					</image>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>
